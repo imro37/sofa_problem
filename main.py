@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from random import randrange as ran
 from random import choice
+from random import uniform
 import os
 from collections import deque
 
@@ -87,14 +88,14 @@ class Polynomial:
 
 a = 1
 
-sofa_len = 3.35#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
+sofa_len = 3.6#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
 sofa_width = 1
 
 res_x = 600
 res_y = int(res_x * sofa_width // sofa_len)
 squares = [[True for i in range(res_y)] for i in range(res_x)]
 walls = [Polynomial([-(2**(1/2))/2 - a, -1]), Polynomial([(2**(1/2))/2 - a, -1]), Polynomial([-(2**(1/2))/2 - a, 1]), Polynomial([(2**(1/2))/2 - a, 1])]
-steps = 200
+steps = 100
 
 
 def squares_position(x_idx, y_idx, center_x, center_y, rotation):
@@ -177,7 +178,6 @@ def fitness(movement, rotation):
 				alive_squares[x][y] = True
 	return count, alive_squares
 
-
 def save_sofa_image(filename):
 	"""Save the current sofa grid as an image using a fixed grid coordinate system.
 
@@ -207,10 +207,27 @@ def save_sofa_image(filename):
 	plt.savefig(filename, dpi=150, bbox_inches='tight')
 	plt.close()
 
+def change_polynomial(poly, degree, epsilons, mutation_probability=0.2):
+	coefficients = poly.coefficients[:]
+	while len(coefficients) < degree:
+		coefficients.append(0)
+
+	changed = []
+	for i in range(degree):
+		if uniform(0, 1) < mutation_probability:
+			coefficients[i] += uniform(-1, 1) * epsilons[i]
+			changed.append(i)
+
+	if not changed:
+		i = ran(degree)
+		coefficients[i] += uniform(-1, 1) * epsilons[i]
+		changed.append(i)
+
+	return Polynomial(coefficients), changed
 
 base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0) -> start and endpoint of the sofas jurney
-multiplier = Polynomial([0.16784911590000998,0,0.1350140697785042,0,0.030517957308613893,0,0.07845157466374399,0,0.033766605551466974,0,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942])
-rotation = Polynomial([-0.018133582982462038,32.13476850022717,-6.764182218722893,27.28943420259416,-3.1117282328240505,-14.475513908592891,9.982331246469954])
+multiplier = Polynomial([1])
+rotation = Polynomial([0])
 script_dir = os.path.dirname(os.path.abspath(__file__))
 output_dir = os.path.join(script_dir, 'output')
 
@@ -221,51 +238,55 @@ if __name__ == '__main__':
 	c, squares = fitness(base * multiplier, rotation)
 	print(c * sofa_len * sofa_width / (res_x * res_y))
 
-	rotation_degree = 12
-	movement_degree = 12
-	epsilons_rot = [100.0 for _ in range(rotation_degree)]
-	epsilons_mov = [0.05 for _ in range(movement_degree)]
-	epsilon_growth = 1.15
-	epsilon_decay = 0.92
-	epsilon_rot_min, epsilon_rot_max = 0.05, 1000.0 #0.05, 60.0
-	epsilon_mov_min, epsilon_mov_max = 5e-5, 2.0 #1e-4, 1.0
+	rotation_degree = 10
+	movement_degree = 10
+	epsilons_rot = [12.0 for _ in range(rotation_degree)]
+	epsilons_mov = [0.02 for _ in range(movement_degree)]
+	epsilon_growth = 1.1
+	epsilon_decay = 0.95
+	epsilon_rot_min, epsilon_rot_max = 0.05, 500 #0.05, 60.0
+	epsilon_mov_min, epsilon_mov_max = 1e-4, 3.0 #1e-4, 1.0
 
 	generations = 10000
 	stagnation = 0
-	for i in range(630, generations):
+	for i in range(generations):
 		got_better = False
-		changing_rot = ran(rotation_degree)
-		new_rot = rotation + Polynomial([0] * (changing_rot - 1) + [choice([-1, 1]) * epsilons_rot[changing_rot]])
+		new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.35)
 		new_c, new_squares = fitness(base * multiplier, new_rot)
 		print("was", c, "new", new_c, "rotation", new_rot)
 		if new_c > c:
 			c = new_c
 			rotation = new_rot
 			squares = new_squares
-			epsilons_rot[changing_rot] *= epsilon_growth
-			epsilons_rot[changing_rot] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[changing_rot]))
+			for idx in changed_rot:
+				epsilons_rot[idx] *= epsilon_growth
+				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
 			got_better = True
 		else:
-			epsilons_rot[changing_rot] *= epsilon_decay
-			epsilons_rot[changing_rot] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[changing_rot]))
+			for idx in changed_rot:
+				epsilons_rot[idx] *= epsilon_decay
+				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
 
-		changing_mov = ran(movement_degree)
-		new_mov = multiplier + Polynomial([0] * (2 * changing_mov) + [choice([-1, 1]) * epsilons_mov[changing_mov]])
+		new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.35)
 		new_c, new_squares = fitness(base * new_mov, rotation)
 		print("was", c, "new", new_c, "movement", new_mov)
 		if new_c > c:
 			c = new_c
 			multiplier = new_mov
 			squares = new_squares
-			epsilons_mov[changing_mov] *= epsilon_growth
-			epsilons_mov[changing_mov] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[changing_mov]))
+			for idx in changed_mov:
+				epsilons_mov[idx] *= epsilon_growth
+				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
 			got_better = True
 		else:
-			epsilons_mov[changing_mov] *= epsilon_decay
-			epsilons_mov[changing_mov] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[changing_mov]))
+			for idx in changed_mov:
+				epsilons_mov[idx] *= epsilon_decay
+				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
 
 		coverage = c * sofa_len * sofa_width / (res_x * res_y)
 		print(f"Generation {i+1}: {coverage:.4f} coverage")
+		print(f"Epsilons rotation: {epsilons_rot}")
+		print(f"Epsilons movement: {epsilons_mov}")
 
 		if got_better:
 			output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
@@ -275,8 +296,6 @@ if __name__ == '__main__':
 			stagnation += 1
 			if stagnation > 120:		
 					stagnation = 0	
-					rotation_degree += 1
-					movement_degree += 1
-					epsilons_rot = [20.0 for _ in range(rotation_degree)]
-					epsilons_mov = [0.05 for _ in range(movement_degree)]
+					epsilons_rot = [e*10 for e in epsilons_rot]
+					epsilons_mov = [e*10 for e in epsilons_mov]
 
