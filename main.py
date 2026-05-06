@@ -4,10 +4,10 @@ import numpy as np
 from random import randrange as ran
 from random import choice
 import os
+from collections import deque
 
-#was 18565 new 18565 rotation -351.8869140625066 + 92.47956018066404x -1.1419387817382813x^2 -12.4969482421875x^3 -0.42193469238281234x^4 -48.10613834574996x^5 + 0.3271141052246094x^6 + 0.2197265625x^7 + 3.1250500679016113x^8 + 0.1640625x^9 -2.421875x^12 + 4.8194580078125x^13
-#was 18565 new 18565 movement 0.4598683413058291 + 0.16163822515770188x^2 + 0.31718673705802797x^4 + 0.0565152874410003x^6 -0.5547796321004123x^8 -0.5604906904614834x^10 + 0.037592406547916415x^12 -0.2664166220197397x^14 + 0.3057194724892674x^16 -0.24395728691973223x^18 -0.044365315773912166x^20 -0.03301079967581577x^22
-
+#-0.018133582982462038,32.13476850022717,-6.764182218722893,27.28943420259416,-3.1117282328240505,-14.475513908592891,9.982331246469954
+#0.16784911590000998,0,0.1350140697785042,0,0.030517957308613893,0,0.07845157466374399,0,0.033766605551466974,0,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942
 
 class Polynomial:
 
@@ -20,40 +20,7 @@ class Polynomial:
 		if not self.coefficients or all(c == 0 for c in self.coefficients):
 			return "0"
 
-		terms = []
-		for power, coeff in enumerate(self.coefficients):
-			if coeff == 0:
-				continue
-
-			# Format the coefficient
-			if power == 0:
-				terms.append(f"{coeff}")
-			elif power == 1:
-				if coeff == 1:
-					terms.append("x")
-				elif coeff == -1:
-					terms.append("-x")
-				else:
-					terms.append(f"{coeff}x")
-			else:
-				if coeff == 1:
-					terms.append(f"x^{power}")
-				elif coeff == -1:
-					terms.append(f"-x^{power}")
-				else:
-					terms.append(f"{coeff}x^{power}")
-
-		# Join terms with proper signs
-		if not terms:
-			return "0"
-
-		result = terms[0]
-		for term in terms[1:]:
-			if term[0] == '-':
-				result += f" {term}"
-			else:
-				result += f" + {term}"
-		return result
+		return ",".join(str(coeff) for coeff in self.coefficients)
 
 	def __add__(self, other):
 		"""Add two polynomials: self + other"""
@@ -120,14 +87,14 @@ class Polynomial:
 
 a = 1
 
-sofa_len = 2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
+sofa_len = 3.35#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
 sofa_width = 1
 
-res_x = 400
+res_x = 600
 res_y = int(res_x * sofa_width // sofa_len)
 squares = [[True for i in range(res_y)] for i in range(res_x)]
 walls = [Polynomial([-(2**(1/2))/2 - a, -1]), Polynomial([(2**(1/2))/2 - a, -1]), Polynomial([-(2**(1/2))/2 - a, 1]), Polynomial([(2**(1/2))/2 - a, 1])]
-steps = 120
+steps = 200
 
 
 def squares_position(x_idx, y_idx, center_x, center_y, rotation):
@@ -149,7 +116,7 @@ def squares_position(x_idx, y_idx, center_x, center_y, rotation):
 def stayed_in(x,y):
 	square_len = sofa_len / res_x
 	square_width = sofa_width / res_y
-	square_radius = (square_len**2 + square_width**2)**(1/2)
+	square_radius = 0.5 * (square_len**2 + square_width**2)**(1/2)
 	stayed = False
 	if x <= 0:
 		if walls[1].evaluate(x)-square_radius > y > walls[0].evaluate(x)+square_radius:
@@ -160,24 +127,55 @@ def stayed_in(x,y):
 
 	return stayed
 
+def add_to_set_if_not_there(x,y,set,squares):
+	if 0 <= x < res_x and 0 <= y < res_y:
+		if squares[x][y] == (True, False):	
+			set.add((x,y))
+			squares[x][y] = (True,True)
+
 def fitness(movement, rotation):
-	squares = [[True for i in range(res_y)] for i in range(res_x)]
+	# state[x][y] -> (is_alive, was_queued)
+	state = [[(True, False) for i in range(res_y)] for i in range(res_x)]
+	boundry_squares = set()
+	for i in range(res_x):
+		boundry_squares.add((i, 0))
+		boundry_squares.add((i, res_y-1))
+		state[i][0] = (True, True)
+		state[i][res_y-1] = (True, True)
+	for j in range(res_y):
+		boundry_squares.add((0, j))
+		boundry_squares.add((res_x-1, j))
+		state[0][j] = (True, True)
+		state[res_x-1][j] = (True, True)
+
 	for step in range(steps+1):
-		for x in range(res_x):
-			for y in range(res_y):
-				if squares[x][y]:
-					center_x = -a + 2*a*step/steps
-					center_y = movement.evaluate(center_x)
-					cell_x, cell_y = squares_position(x, y, center_x, center_y, rotation.evaluate(center_x))
-					if not stayed_in(cell_x, cell_y):
-						squares[x][y] = False
+		new_boundry_squares = set()
+		while boundry_squares:
+			x, y = boundry_squares.pop()
+			center_x = -a + 2*a*step/steps #the center point of the sofa at the current step
+			center_y = movement.evaluate(center_x)
+			cell_x, cell_y = squares_position(x, y, center_x, center_y, rotation.evaluate(center_x))
+			if not stayed_in(cell_x, cell_y):
+				state[x][y] = (False, False)
+				add_to_set_if_not_there(x+1,y,boundry_squares, state)
+				add_to_set_if_not_there(x-1,y,boundry_squares, state)
+				add_to_set_if_not_there(x,y+1,boundry_squares, state)
+				add_to_set_if_not_there(x,y-1,boundry_squares, state)
+
+			else:
+				new_boundry_squares.add((x, y))
+
+		boundry_squares = new_boundry_squares
+
 
 	count = 0
+	alive_squares = [[False for i in range(res_y)] for i in range(res_x)]
 	for x in range(res_x):
 		for y in range(res_y):
-			if squares[x][y]:
+			if state[x][y][0]:
 				count += 1
-	return count, squares
+				alive_squares[x][y] = True
+	return count, alive_squares
 
 
 def save_sofa_image(filename):
@@ -210,28 +208,32 @@ def save_sofa_image(filename):
 	plt.close()
 
 
-base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0)
-multiplier = Polynomial([0.47039946367666763, 0, 0.15065507156645208, 0, 0.30669230401581876, 0,  0.07964955243871474, 0, -0.6092269207122406, 0, -0.5098234727965457, 0, -0.024000000000000007, 0, -0.08288412528639996, 0, -0.00390126351073275, 0, -0.3950110865511547])
-rotation = Polynomial([-350.3244140625066, 94.5950084838867, -1.1419387817382813, -12.5, -0.42004260253906234, -48.00848209574996, 0.7702903747558594, 0.1953125, 1.5625, 0.06396484375])
+base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0) -> start and endpoint of the sofas jurney
+multiplier = Polynomial([0.16784911590000998,0,0.1350140697785042,0,0.030517957308613893,0,0.07845157466374399,0,0.033766605551466974,0,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942])
+rotation = Polynomial([-0.018133582982462038,32.13476850022717,-6.764182218722893,27.28943420259416,-3.1117282328240505,-14.475513908592891,9.982331246469954])
 script_dir = os.path.dirname(os.path.abspath(__file__))
 output_dir = os.path.join(script_dir, 'output')
 
 
 if __name__ == '__main__':
-	# Create output directory next to this script
 	os.makedirs(output_dir, exist_ok=True)
 
 	c, squares = fitness(base * multiplier, rotation)
 	print(c * sofa_len * sofa_width / (res_x * res_y))
 
-	rotation_degree = 15
+	rotation_degree = 12
 	movement_degree = 12
-	epsilons_rot = [100 for _ in range(rotation_degree)]
-	epsilons_mov = [0.1 for _ in range(movement_degree)]
+	epsilons_rot = [100.0 for _ in range(rotation_degree)]
+	epsilons_mov = [0.05 for _ in range(movement_degree)]
+	epsilon_growth = 1.15
+	epsilon_decay = 0.92
+	epsilon_rot_min, epsilon_rot_max = 0.05, 1000.0 #0.05, 60.0
+	epsilon_mov_min, epsilon_mov_max = 5e-5, 2.0 #1e-4, 1.0
 
 	generations = 10000
-	for i in range(generations):
-		print("generation", i + 1)
+	stagnation = 0
+	for i in range(630, generations):
+		got_better = False
 		changing_rot = ran(rotation_degree)
 		new_rot = rotation + Polynomial([0] * (changing_rot - 1) + [choice([-1, 1]) * epsilons_rot[changing_rot]])
 		new_c, new_squares = fitness(base * multiplier, new_rot)
@@ -240,26 +242,41 @@ if __name__ == '__main__':
 			c = new_c
 			rotation = new_rot
 			squares = new_squares
-			epsilons_rot[changing_rot] *= 2.1
+			epsilons_rot[changing_rot] *= epsilon_growth
+			epsilons_rot[changing_rot] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[changing_rot]))
+			got_better = True
 		else:
-			epsilons_rot[changing_rot] *= 0.5
+			epsilons_rot[changing_rot] *= epsilon_decay
+			epsilons_rot[changing_rot] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[changing_rot]))
 
 		changing_mov = ran(movement_degree)
 		new_mov = multiplier + Polynomial([0] * (2 * changing_mov) + [choice([-1, 1]) * epsilons_mov[changing_mov]])
 		new_c, new_squares = fitness(base * new_mov, rotation)
 		print("was", c, "new", new_c, "movement", new_mov)
-		if new_c >= c:
+		if new_c > c:
 			c = new_c
 			multiplier = new_mov
 			squares = new_squares
-			epsilons_mov[changing_mov] *= 1.3
+			epsilons_mov[changing_mov] *= epsilon_growth
+			epsilons_mov[changing_mov] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[changing_mov]))
+			got_better = True
 		else:
-			epsilons_mov[changing_mov] *= 0.8
+			epsilons_mov[changing_mov] *= epsilon_decay
+			epsilons_mov[changing_mov] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[changing_mov]))
 
 		coverage = c * sofa_len * sofa_width / (res_x * res_y)
 		print(f"Generation {i+1}: {coverage:.4f} coverage")
 
-		# Save image every generation
-		output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
-		save_sofa_image(output_file)
-		print(f"Saved {output_file}")
+		if got_better:
+			output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
+			save_sofa_image(output_file)
+			print(f"Saved image")
+		else:
+			stagnation += 1
+			if stagnation > 120:		
+					stagnation = 0	
+					rotation_degree += 1
+					movement_degree += 1
+					epsilons_rot = [20.0 for _ in range(rotation_degree)]
+					epsilons_mov = [0.05 for _ in range(movement_degree)]
+
