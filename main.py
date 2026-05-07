@@ -92,7 +92,7 @@ class Polynomial:
 
 a = 1
 
-sofa_len = 3.6#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
+sofa_len = 3.35#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
 sofa_width = 1
 
 res_x = 600
@@ -239,7 +239,8 @@ base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0) -> star
 multiplier = Polynomial([1])
 rotation = Polynomial([0])
 script_dir = os.path.dirname(os.path.abspath(__file__))
-output_dir = os.path.join(script_dir, 'output_1')
+output_ind = 1 #just for running the script multiple times without overwriting previous outputs(could be done smarter)
+output_dir = os.path.join(script_dir, f'output_{output_ind}') 
 
 
 if __name__ == '__main__':
@@ -250,19 +251,16 @@ if __name__ == '__main__':
 
 	rotation_degree = 10
 	movement_degree = 10
-	epsilons_rot = [12.0 for _ in range(rotation_degree)]
-	epsilons_mov = [0.02 for _ in range(movement_degree)]
-	epsilon_growth = 1.3
-	epsilon_decay = 0.95
-	epsilon_rot_min, epsilon_rot_max = 0.01, 500 #0.05, 60.0
-	epsilon_mov_min, epsilon_mov_max = 1e-5, 3.0 #1e-4, 1.0
+	epsilon_size = 0.1
+	epsilons_rot = [5.0 for _ in range(rotation_degree)]
+	epsilons_mov = [0.5 for _ in range(movement_degree)]
 
 	generations = 100000
 	stagnation = 0
 	for i in range(generations):
 		got_better = False
-		new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.25)
-		new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.25, even=True)
+		new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.35)
+		new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.35, even=True)
 		new_c, new_squares = fitness(base * new_mov, new_rot)
 		print("was", c, "new", new_c)
 		if new_c > c:
@@ -270,20 +268,19 @@ if __name__ == '__main__':
 			rotation = new_rot
 			multiplier = new_mov
 			squares = new_squares
-			for idx in changed_rot:
-				epsilons_rot[idx] *= epsilon_growth
-				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
-			for idx in changed_mov:
-				epsilons_mov[idx] *= epsilon_growth
-				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
+
+			rot_coeffs = rotation.coefficients[:]
+			if i > 80:
+				while len(rot_coeffs) < rotation_degree:
+					rot_coeffs.append(0)
+				epsilons_rot = [max(0.05,  epsilon_size * abs(rot_coeffs[idx])) for idx in range(rotation_degree)]
+
+				mov_coeffs = multiplier.coefficients[:]
+				while len(mov_coeffs) < movement_degree * 2 - 1:
+					mov_coeffs.append(0)
+				epsilons_mov = [max(0.005, epsilon_size * abs(mov_coeffs[idx * 2])) for idx in range(movement_degree)]
+
 			got_better = True
-		else:
-			for idx in changed_rot:
-				epsilons_rot[idx] *= epsilon_decay
-				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
-			for idx in changed_mov:
-				epsilons_mov[idx] *= epsilon_decay
-				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
 
 		coverage = c * sofa_len * sofa_width / (res_x * res_y)
 		print(f"Generation {i+1}: {coverage:.4f} coverage")
@@ -292,12 +289,10 @@ if __name__ == '__main__':
 			output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
 			save_sofa_image(output_file)
 			print(f"Saved image")
-			with open('best_solution_log_1.txt', 'a') as log_file:
+			with open(f'best_solution_log_{output_ind}.txt', 'a') as log_file:
 				log_file.write(f"Generation {i+1}: movement {multiplier} rotation {rotation}\n")
 		else:
 			stagnation += 1
 			if stagnation > 120:		
-					stagnation = 0	
-					epsilons_rot = [e*10 for e in epsilons_rot]
-					epsilons_mov = [e*10 for e in epsilons_mov]
+					stagnation = 0
 
