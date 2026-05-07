@@ -10,6 +10,10 @@ from collections import deque
 #-0.018133582982462038,32.13476850022717,-6.764182218722893,27.28943420259416,-3.1117282328240505,-14.475513908592891,9.982331246469954
 #0.16784911590000998,0,0.1350140697785042,0,0.030517957308613893,0,0.07845157466374399,0,0.033766605551466974,0,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942
 
+
+#2.14
+#movement 0.07126333841985563,-0.01471702794910365,0.1556014188212459,-0.12753166423427123,0.003639016178784038,-0.11057575143224577,0.44717895107399985,-0.06855410789504567,-0.04349576247529413,0.293486217469747,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942
+#rot -3.6470271780161996,40.698867527903985,-0.3030352792401666,29.8307499645558,0.2820813494778167,-17.996590657870307,14.49154971243075,-4.531441525126381,-11.334510371017025,-3.618530730029886
 class Polynomial:
 
 	def __init__(self, coefficients):
@@ -207,21 +211,27 @@ def save_sofa_image(filename):
 	plt.savefig(filename, dpi=150, bbox_inches='tight')
 	plt.close()
 
-def change_polynomial(poly, degree, epsilons, mutation_probability=0.2):
+def change_polynomial(poly, degree, epsilons, mutation_probability=0.2, even = False):
 	coefficients = poly.coefficients[:]
-	while len(coefficients) < degree:
+	while len(coefficients) < degree*2 -1:
 		coefficients.append(0)
 
 	changed = []
 	for i in range(degree):
+		j = i
+		if even:
+			i = i*2
 		if uniform(0, 1) < mutation_probability:
-			coefficients[i] += uniform(-1, 1) * epsilons[i]
-			changed.append(i)
+			coefficients[i] += uniform(-1, 1) * epsilons[j]
+			changed.append(j)
 
 	if not changed:
-		i = ran(degree)
-		coefficients[i] += uniform(-1, 1) * epsilons[i]
-		changed.append(i)
+		i = ran(0, degree)
+		j = i
+		if even:
+			i = i*2
+		coefficients[i] += uniform(-1, 1) * epsilons[j]
+		changed.append(j)
 
 	return Polynomial(coefficients), changed
 
@@ -229,7 +239,7 @@ base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0) -> star
 multiplier = Polynomial([1])
 rotation = Polynomial([0])
 script_dir = os.path.dirname(os.path.abspath(__file__))
-output_dir = os.path.join(script_dir, 'output')
+output_dir = os.path.join(script_dir, 'output_1')
 
 
 if __name__ == '__main__':
@@ -242,56 +252,48 @@ if __name__ == '__main__':
 	movement_degree = 10
 	epsilons_rot = [12.0 for _ in range(rotation_degree)]
 	epsilons_mov = [0.02 for _ in range(movement_degree)]
-	epsilon_growth = 1.1
+	epsilon_growth = 1.3
 	epsilon_decay = 0.95
-	epsilon_rot_min, epsilon_rot_max = 0.05, 500 #0.05, 60.0
-	epsilon_mov_min, epsilon_mov_max = 1e-4, 3.0 #1e-4, 1.0
+	epsilon_rot_min, epsilon_rot_max = 0.01, 500 #0.05, 60.0
+	epsilon_mov_min, epsilon_mov_max = 1e-5, 3.0 #1e-4, 1.0
 
-	generations = 10000
+	generations = 100000
 	stagnation = 0
 	for i in range(generations):
 		got_better = False
-		new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.35)
-		new_c, new_squares = fitness(base * multiplier, new_rot)
-		print("was", c, "new", new_c, "rotation", new_rot)
+		new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.25)
+		new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.25, even=True)
+		new_c, new_squares = fitness(base * new_mov, new_rot)
+		print("was", c, "new", new_c)
 		if new_c > c:
 			c = new_c
 			rotation = new_rot
+			multiplier = new_mov
 			squares = new_squares
 			for idx in changed_rot:
 				epsilons_rot[idx] *= epsilon_growth
 				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
-			got_better = True
-		else:
-			for idx in changed_rot:
-				epsilons_rot[idx] *= epsilon_decay
-				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
-
-		new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.35)
-		new_c, new_squares = fitness(base * new_mov, rotation)
-		print("was", c, "new", new_c, "movement", new_mov)
-		if new_c > c:
-			c = new_c
-			multiplier = new_mov
-			squares = new_squares
 			for idx in changed_mov:
 				epsilons_mov[idx] *= epsilon_growth
 				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
 			got_better = True
 		else:
+			for idx in changed_rot:
+				epsilons_rot[idx] *= epsilon_decay
+				epsilons_rot[idx] = min(epsilon_rot_max, max(epsilon_rot_min, epsilons_rot[idx]))
 			for idx in changed_mov:
 				epsilons_mov[idx] *= epsilon_decay
 				epsilons_mov[idx] = min(epsilon_mov_max, max(epsilon_mov_min, epsilons_mov[idx]))
 
 		coverage = c * sofa_len * sofa_width / (res_x * res_y)
 		print(f"Generation {i+1}: {coverage:.4f} coverage")
-		print(f"Epsilons rotation: {epsilons_rot}")
-		print(f"Epsilons movement: {epsilons_mov}")
 
 		if got_better:
 			output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
 			save_sofa_image(output_file)
 			print(f"Saved image")
+			with open('best_solution_log_1.txt', 'a') as log_file:
+				log_file.write(f"Generation {i+1}: movement {multiplier} rotation {rotation}\n")
 		else:
 			stagnation += 1
 			if stagnation > 120:		
