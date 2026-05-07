@@ -121,13 +121,14 @@ def squares_position(x_idx, y_idx, center_x, center_y, rotation):
 def stayed_in(x,y):
 	square_len = sofa_len / res_x
 	square_width = sofa_width / res_y
-	square_radius = 0.5 * (square_len**2 + square_width**2)**(1/2)
+	avg = (square_len * square_width) / 2
+	#square_radius = 0.5 * (square_len**2 + square_width**2)**(1/2)
 	stayed = False
 	if x <= 0:
-		if walls[1].evaluate(x)-square_radius > y > walls[0].evaluate(x)+square_radius:
+		if walls[1].evaluate(x)-avg > y > walls[0].evaluate(x)+avg:
 			stayed = True
 	else:
-		if walls[3].evaluate(x)-square_radius > y > walls[2].evaluate(x)+square_radius:
+		if walls[3].evaluate(x)-avg > y > walls[2].evaluate(x)+avg:
 			stayed = True
 
 	return stayed
@@ -293,6 +294,12 @@ if __name__ == '__main__':
 				log_file.write(f"Generation {i+1}: movement {multiplier} rotation {rotation}\n")
 		else:
 			stagnation += 1
-			if stagnation > 120:		
+			if stagnation > 70:		
 					stagnation = 0
+					res_x = int(res_x*1.5)
+					res_y = int(res_x * sofa_width // sofa_len)
+					steps = int(steps*1.2)
+					c, squares = fitness(base * multiplier, rotation)
+					
+
 
