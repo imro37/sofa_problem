@@ -1,19 +1,13 @@
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from random import randrange as ran
-from random import choice
+from random import randrange
 from random import uniform
 import os
-from collections import deque
 
-#-0.018133582982462038,32.13476850022717,-6.764182218722893,27.28943420259416,-3.1117282328240505,-14.475513908592891,9.982331246469954
-#0.16784911590000998,0,0.1350140697785042,0,0.030517957308613893,0,0.07845157466374399,0,0.033766605551466974,0,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942
+best_movement =  [0.09028615342502605,0,-0.009740252911162787,0,0.9813074069726829,0,-0.47865520222657537,0,0.30557278861697523,0,-0.3102728815657489,0,-0.030020618627862015,0,-0.3982886223111034,0,0.11943979386601072,0,0.2184937846571669] 
+best_rotation =  [0.36969438580912795,54.60791672333049,0.33119821539801886,6.037682262039188,0.8350660735035955,-17.431440526432493,-1.8420354407091328,1.1390813438361806,0.2517998107395694,0.6465559356472826]
 
-
-#2.14
-#movement 0.07126333841985563,-0.01471702794910365,0.1556014188212459,-0.12753166423427123,0.003639016178784038,-0.11057575143224577,0.44717895107399985,-0.06855410789504567,-0.04349576247529413,0.293486217469747,0.12073815527159326,0,-0.06514352427361955,0,-0.019258157334110942
-#rot -3.6470271780161996,40.698867527903985,-0.3030352792401666,29.8307499645558,0.2820813494778167,-17.996590657870307,14.49154971243075,-4.531441525126381,-11.334510371017025,-3.618530730029886
 class Polynomial:
 
 	def __init__(self, coefficients):
@@ -28,7 +22,6 @@ class Polynomial:
 		return ",".join(str(coeff) for coeff in self.coefficients)
 
 	def __add__(self, other):
-		"""Add two polynomials: self + other"""
 		if not isinstance(other, Polynomial):
 			raise TypeError("Can only add Polynomial to Polynomial")
 
@@ -46,7 +39,6 @@ class Polynomial:
 		return Polynomial(result)
 
 	def __sub__(self, other):
-		"""Subtract two polynomials: self - other"""
 		if not isinstance(other, Polynomial):
 			raise TypeError("Can only subtract Polynomial from Polynomial")
 
@@ -63,7 +55,6 @@ class Polynomial:
 		return Polynomial(result)
 
 	def __mul__(self, other):
-		"""Multiply two polynomials: self * other"""
 		if not isinstance(other, Polynomial):
 			raise TypeError("Can only multiply Polynomial by Polynomial")
 
@@ -79,38 +70,32 @@ class Polynomial:
 		return Polynomial(result)
 
 	def evaluate(self, x):
-		"""Evaluate the polynomial at a given value of x."""
 		result = 0
 		for power, coeff in enumerate(self.coefficients):
 			result += coeff * (x ** power)
 		return result
 
 	def degree(self):
-		"""Return the degree of the polynomial."""
 		return len(self.coefficients) - 1
 
+a = 1 #the x coordinate of the -start and endpoint of the sofa's journey
 
-a = 1
+sofa_len = 3.35  #lenght of the starting block of squares, 2*a*(2**(1/2)) + 1 would be using all available space, 3.35 is just a heuristic from known solution
+sofa_width = 1	 #matches the width of the corridor
 
-sofa_len = 3.35#2*a*(2**(1/2)) + 1 # lenght of the starting block of squares -> fills the corridor
-sofa_width = 1
-
-res_x = 600
-res_y = int(res_x * sofa_width // sofa_len)
+res_x = 600 #number of pixels along the sofa's length (resolution)
+res_y = int(res_x * sofa_width / sofa_len)
+square_len = sofa_len / res_x
+square_width = sofa_width / res_y
+square_radius = (square_len**2 + square_width**2)**0.5 / 2 # for checking if the square stayed in bounds
 squares = [[True for i in range(res_y)] for i in range(res_x)]
 walls = [Polynomial([-(2**(1/2))/2 - a, -1]), Polynomial([(2**(1/2))/2 - a, -1]), Polynomial([-(2**(1/2))/2 - a, 1]), Polynomial([(2**(1/2))/2 - a, 1])]
-steps = 100
+steps = 200 #number of simulation steps, the sofa will take from -a to a
 
 
 def squares_position(x_idx, y_idx, center_x, center_y, rotation):
 	angle = math.radians(rotation)
 
-	# Positive angles are counterclockwise.
-	square_len = sofa_len / res_x
-	square_width = sofa_width / res_y
-
-	# Map the grid cell to the sofa's local center coordinates.
-	# x_idx indexes along sofa_len (x-direction), y_idx indexes along sofa_width (y-direction)
 	local_x = -sofa_len / 2 + (x_idx + 0.5) * square_len
 	local_y = -sofa_width / 2 + (y_idx + 0.5) * square_width
 
@@ -119,21 +104,17 @@ def squares_position(x_idx, y_idx, center_x, center_y, rotation):
 	return world_x, world_y
 
 def stayed_in(x,y):
-	square_len = sofa_len / res_x
-	square_width = sofa_width / res_y
-	avg = (square_len * square_width) / 2
-	#square_radius = 0.5 * (square_len**2 + square_width**2)**(1/2)
 	stayed = False
 	if x <= 0:
-		if walls[1].evaluate(x)-avg > y > walls[0].evaluate(x)+avg:
+		if walls[1].evaluate(x)-square_radius > y > walls[0].evaluate(x)+square_radius:
 			stayed = True
 	else:
-		if walls[3].evaluate(x)-avg > y > walls[2].evaluate(x)+avg:
+		if walls[3].evaluate(x)-square_radius > y > walls[2].evaluate(x)+square_radius:
 			stayed = True
 
 	return stayed
 
-def add_to_set_if_not_there(x,y,set,squares):
+def add_to_boundry_set(x,y,set,squares):
 	if 0 <= x < res_x and 0 <= y < res_y:
 		if squares[x][y] == (True, False):	
 			set.add((x,y))
@@ -163,10 +144,10 @@ def fitness(movement, rotation):
 			cell_x, cell_y = squares_position(x, y, center_x, center_y, rotation.evaluate(center_x))
 			if not stayed_in(cell_x, cell_y):
 				state[x][y] = (False, False)
-				add_to_set_if_not_there(x+1,y,boundry_squares, state)
-				add_to_set_if_not_there(x-1,y,boundry_squares, state)
-				add_to_set_if_not_there(x,y+1,boundry_squares, state)
-				add_to_set_if_not_there(x,y-1,boundry_squares, state)
+				add_to_boundry_set(x+1,y,boundry_squares, state)
+				add_to_boundry_set(x-1,y,boundry_squares, state)
+				add_to_boundry_set(x,y+1,boundry_squares, state)
+				add_to_boundry_set(x,y-1,boundry_squares, state)
 
 			else:
 				new_boundry_squares.add((x, y))
@@ -183,14 +164,9 @@ def fitness(movement, rotation):
 				alive_squares[x][y] = True
 	return count, alive_squares
 
-def save_sofa_image(filename):
-	"""Save the current sofa grid as an image using a fixed grid coordinate system.
-
-	This draws only the boolean `squares` grid (no rotation or world mapping), so
-	each saved image is directly comparable to previous generations.
-	"""
-
-	# Build a 2D array where rows correspond to y (width) and cols to x (length)
+def save_sofa_image(filename, squares):
+	res_x = len(squares)
+	res_y = len(squares[0])
 	arr = np.zeros((res_y, res_x), dtype=np.uint8)
 	for x in range(res_x):
 		for y in range(res_y):
@@ -200,7 +176,6 @@ def save_sofa_image(filename):
 	fig_height = max(2, fig_width * (sofa_width / sofa_len))
 	fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-	# extent maps array coordinates to physical sofa coordinates [x0,x1,y0,y1]
 	extent = [0, sofa_len, 0, sofa_width]
 	ax.imshow(arr, cmap='Greens', interpolation='nearest', origin='lower', extent=extent, aspect='equal')
 
@@ -227,7 +202,7 @@ def change_polynomial(poly, degree, epsilons, mutation_probability=0.2, even = F
 			changed.append(j)
 
 	if not changed:
-		i = ran(0, degree)
+		i = randrange(0, degree)
 		j = i
 		if even:
 			i = i*2
@@ -239,8 +214,9 @@ def change_polynomial(poly, degree, epsilons, mutation_probability=0.2, even = F
 base = Polynomial([-a, 1]) * Polynomial([a, 1])  # hits (-a,0) and (a,0) -> start and endpoint of the sofas jurney
 multiplier = Polynomial([1])
 rotation = Polynomial([0])
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-output_ind = 1 #just for running the script multiple times without overwriting previous outputs(could be done smarter)
+output_ind = 99 #just for running the script multiple times without overwriting previous outputs(could be done smarter)
 output_dir = os.path.join(script_dir, f'output_{output_ind}') 
 
 
@@ -250,11 +226,11 @@ if __name__ == '__main__':
 	c, squares = fitness(base * multiplier, rotation)
 	print(c * sofa_len * sofa_width / (res_x * res_y))
 
-	rotation_degree = 10
-	movement_degree = 10
+	rotation_degree = 12
+	movement_degree = 12
 	epsilon_size = 0.1
-	epsilons_rot = [5.0 for _ in range(rotation_degree)]
-	epsilons_mov = [0.5 for _ in range(movement_degree)]
+	epsilons_rot = [10.0 for _ in range(rotation_degree)]
+	epsilons_mov = [0.1 for _ in range(movement_degree)]
 
 	generations = 100000
 	stagnation = 0
@@ -270,8 +246,8 @@ if __name__ == '__main__':
 			multiplier = new_mov
 			squares = new_squares
 
-			rot_coeffs = rotation.coefficients[:]
-			if i > 80:
+			if i > 50: #first 50 generations are for exploration, the epsilons are not based on the coefficients, but just set to a high value to encourage exploration
+				rot_coeffs = rotation.coefficients[:]
 				while len(rot_coeffs) < rotation_degree:
 					rot_coeffs.append(0)
 				epsilons_rot = [max(0.05,  epsilon_size * abs(rot_coeffs[idx])) for idx in range(rotation_degree)]
@@ -288,17 +264,19 @@ if __name__ == '__main__':
 
 		if got_better:
 			output_file = os.path.join(output_dir, f'gen_{i+1:05d}.png')
-			save_sofa_image(output_file)
+			save_sofa_image(output_file, squares)
 			print(f"Saved image")
 			with open(f'best_solution_log_{output_ind}.txt', 'a') as log_file:
 				log_file.write(f"Generation {i+1}: movement {multiplier} rotation {rotation}\n")
 		else:
 			stagnation += 1
-			if stagnation > 70:		
+			if stagnation > 10000:		
 					stagnation = 0
-					res_x = int(res_x*1.5)
+					res_x = min(int(res_x*1.2), 1000)
 					res_y = int(res_x * sofa_width // sofa_len)
-					steps = int(steps*1.2)
+					square_len = sofa_len / res_x
+					square_width = sofa_width / res_y
+					steps = min(int(steps*1.2), 300)
 					c, squares = fitness(base * multiplier, rotation)
 					
 
