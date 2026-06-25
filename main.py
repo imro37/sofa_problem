@@ -1,4 +1,5 @@
 import math
+from visualise_solution import save_sofa_journey_frames
 import matplotlib.pyplot as plt
 import numpy as np
 from random import randrange
@@ -6,7 +7,7 @@ from random import uniform
 from random import seed
 import os
 
-SEED = 4242
+SEED = 42
 seed(SEED)
 
 best_movement =  [0.09028615342502605,0,-0.009740252911162787,0,0.9813074069726829,0,-0.47865520222657537,0,0.30557278861697523,0,-0.3102728815657489,0,-0.030020618627862015,0,-0.3982886223111034,0,0.11943979386601072,0,0.2184937846571669] 
@@ -87,13 +88,13 @@ a = 1 #the x coordinate of the -start and endpoint of the sofa's journey
 sofa_len = 3.35  #lenght of the starting block of squares, 2*a*(2**(1/2)) + 1 would be using all available space, 3.35 is just a heuristic from known solution
 sofa_width = 1	 #matches the width of the corridor
 
-res_x = 400 #number of pixels along the sofa's length (resolution)
+res_x = 100 #number of pixels along the sofa's length (resolution)
 res_y = int(res_x * sofa_width / sofa_len)
 square_len = sofa_len / res_x
 square_width = sofa_width / res_y
 square_radius = (square_len**2 + square_width**2)**0.5 / 2 # for checking if the square stayed in bounds
 walls = [Polynomial([-(2**(1/2))/2 - a, -1]), Polynomial([(2**(1/2))/2 - a, -1]), Polynomial([-(2**(1/2))/2 - a, 1]), Polynomial([(2**(1/2))/2 - a, 1])]
-steps = 120 #number of simulation steps, the sofa will take from -a to a
+steps = 50 #number of simulation steps, the sofa will take from -a to a
 
 
 def squares_position(x_idx, y_idx, center_x, center_y, rotation):
@@ -234,18 +235,23 @@ cover, squares = fitness(base * multiplier, rotation)
 save_sofa_image(os.path.join(output_dir, f'gen_0.png') , squares)
 print(cover * sofa_len * sofa_width / (res_x * res_y))
 
-rotation_degree = 8
+rotation_degree = 10
 movement_degree = 16 #the movement polynomial is even, so has a lot of zeros
-epsilon_size = 0.1
-epsilons_rot = [20.0 for _ in range(rotation_degree+1)]#default epsilons for the exploration phase
+mutation_prob = 0.35
+epsilon_size = 0.2
+epsilons_rot = [10.0 for _ in range(rotation_degree+1)]#default epsilons for the exploration phase
 epsilons_mov = [1 if i % 2 == 0 else 0 for i in range(movement_degree+1)]
+max_resx = 800
+max_steps = 200
+min_epsilon = 0.05
+stagnation_time = 200
 
-generations = 10000
+generations = 10_000
 stagnation = 0
 for generation in range(generations):
 	got_better = False
-	new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=0.35)
-	new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=0.35)
+	new_rot, changed_rot = change_polynomial(rotation, rotation_degree, epsilons_rot, mutation_probability=mutation_prob)
+	new_mov, changed_mov = change_polynomial(multiplier, movement_degree, epsilons_mov, mutation_probability=mutation_prob)
 	new_cover, new_squares = fitness(base * new_mov, new_rot)
 	if new_cover > cover:
 		cover = new_cover
@@ -265,12 +271,18 @@ for generation in range(generations):
 				mov_coeffs.append(0)
 			epsilons_mov = [max(0.01, epsilon_size * abs(mov_coeffs[idx])) if idx % 2 == 0 else 0 for idx in range(movement_degree)]
 
-	elif stagnation > 100:		
+	elif stagnation > stagnation_time:		
 		stagnation = 0
-#		square_len = sofa_len / res_x
-#		square_width = sofa_width / res_y
-#		steps = min(int(steps*1.2), 300)
-#		cover, squares = fitness(base * multiplier, rotation)]
+		if res_x < max_resx:
+			res_x = min(int(res_x * 1.2), max_resx)
+			res_y = int(res_x * sofa_width / sofa_len)
+			square_len = sofa_len / res_x
+			square_width = sofa_width / res_y
+			square_radius = (square_len**2 + square_width**2)**0.5 / 2
+		if steps < max_steps:
+			steps = min(int(steps * 1.2), max_steps)
+		epsilon_size = max(epsilon_size * 0.9, min_epsilon)
+		cover, squares = fitness(base * multiplier, rotation)
 	else:
 		stagnation += 1
 
@@ -278,3 +290,15 @@ for generation in range(generations):
 	coverage = cover * sofa_len * sofa_width / (res_x * res_y)
 	print(f"Generation {generation+1}: {coverage} coverage")
 	print("covered squares before:", cover, "new:", new_cover)
+
+save_sofa_journey_frames(
+	squares,
+	base * multiplier,
+	rotation,
+	walls,
+	os.path.join(output_dir, "journey_frames"),
+	steps=100,
+	a=a,
+	sofa_len=sofa_len,
+	sofa_width=sofa_width,
+)
