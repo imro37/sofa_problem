@@ -17,12 +17,12 @@ for each x-position along the corridor. The code then evaluates how much of the 
 
 ```mermaid
 flowchart TD
-    A[config.py]
-    B --> C[fitness.py\nSimulate sofa path through corridor]
+    A[config.py] --> B[optimizer.py\nInitialize polynomial candidates]
+    B --> C[fitness.py\nSimulate sofa]
     C --> D[score = number of alive cells / coverage]
-    D --> E[mutation.py\nRandomly perturb polynomial coefficients]
+    D --> E[mutation.py\nRandom changes]
     E --> B
-    B --> F[visualization.py\nSave progress images and final animation]
+    B --> F[visualization.py\nSave snapshots]
     G[main.py\nEntry point] --> B
 ```
 
