@@ -1,6 +1,7 @@
 import os
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -22,6 +23,30 @@ def _sofa_points(squares, sofa_len, sofa_width):
 				points.append((local_x, local_y))
 
 	return np.array(points)
+
+
+def save_sofa_image(filename, squares, sofa_len, sofa_width):
+	res_x = len(squares)
+	res_y = len(squares[0])
+	arr = np.zeros((res_y, res_x), dtype=np.uint8)
+	for x in range(res_x):
+		for y in range(res_y):
+			arr[y, x] = 1 if squares[x][y] else 0
+
+	fig_width = 10
+	fig_height = max(2, fig_width * (sofa_width / sofa_len))
+	fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+	extent = [0, sofa_len, 0, sofa_width]
+	ax.imshow(arr, cmap='Greens', interpolation='nearest', origin='lower', extent=extent, aspect='equal')
+
+	ax.set_xlim(0, sofa_len)
+	ax.set_ylim(0, sofa_width)
+	ax.set_xlabel('sofa length')
+	ax.set_ylabel('sofa width')
+	plt.tight_layout()
+	plt.savefig(filename, dpi=150, bbox_inches='tight')
+	plt.close()
 
 
 def save_sofa_journey_frames(
@@ -63,4 +88,3 @@ def save_sofa_journey_frames(
 		plt.tight_layout()
 		plt.savefig(os.path.join(output_dir, f"frame_{step + 1:03d}.png"), dpi=150)
 		plt.close(fig)
-

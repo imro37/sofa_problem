@@ -1,2 +1,6 @@
 /output
 /__pycache__
+output_*_images/
+best_solution_log_*.txt
+run_*/
+*.err
