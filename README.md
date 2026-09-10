@@ -1,13 +1,15 @@
 # Sofa Problem Optimizer
 
-This project searches for a good solution to the moving sofa problem by representing the sofa's motion as a pair of polynomials and using a hill-climbing style optimizer on their coefficients.
+The sofa problem is a famous math problem about finding the largest sofa that can fit through a corner. More accurately, it is a continuous 2D shape with the greatest area that can be moved through a corridor of unit width with a right-angle bend in the middle. The problem is thought to be solved (a preprint proof exists, possibly proving the Gerver sofa to be the largest possible) with an area of approximately 2.2195. This method, with the default configuration, finds a solution with an area of 2.207, and with enough computation and parameter tuning, it could be pushed even closer to the maximum.
+
+This project searches for a good solution to the sofa problem by representing the sofa's motion as a pair of polynomials and using a hill-climbing style optimizer on their coefficients.
 
 The idea is to describe:
 
 - the sofa center path as a polynomial function `movement(x)`, and
 - the sofa orientation angle as a polynomial function `rotation(x)`,
 
-for each x-position along the corridor. Then the code evaluates how much of the sofa stays inside the corridor over a sampled trajectory and mutates polynomial coefficients to improve the score.
+for each x-position along the corridor. The code then evaluates how much of the sofa stays inside the corridor over a sampled trajectory and mutates the polynomial coefficients to improve the score.
 
 ---
 
@@ -33,28 +35,17 @@ At a high level, the workflow is:
 5. Keep the better candidate and repeat until the solution stagnates or the run ends.
 6. Save a snapshot and animation of the best result found.
 
----
-
 ## Problem setup
+The corridor is modeled as four wall functions, defined in `config.py`.
 
-The corridor is modelled as four wall functions, defined in `config.py`:
+These walls define a corridor with the sofa moving from left to right along the x-axis. The corridor is angled so the initial sofa angle is -45° and the final angle is 45°. This is to make the start and end position of the sofa be (-span, 0) and (+span, 0), which is easily enforceable since the movement is a polynomial (we simply multiply it by (x + span)(x - span)).
 
-- left upper wall
-- left lower wall
-- right upper wall
-- right lower wall
-
-These walls define a narrow corridor with the sofa moving from left to right along the x-axis. The sofa starts near `x = -span` and ends near `x = span`.
+It is visualized well here: https://www.desmos.com/calculator/22tt7qiunr
+with the 4 walls and the default center movement polynomial.
 
 The script uses a discretized grid over the sofa rectangle and checks whether each occupancy cell remains inside the corridor while the sofa translates and rotates along its journey.
 
 The optimizer tries to maximize the covered area that fits inside the corridor while keeping the sofa valid throughout the motion.
-
----
-
-## Core idea: two polynomial representations
-
-The project does not optimize the sofa as a list of discrete points. Instead, it encodes the path using polynomial coefficients.
 
 ### Movement polynomial
 
@@ -63,15 +54,17 @@ The center of the sofa moves along the x-axis according to a polynomial function
 - `center_x` is sampled linearly from `-span` to `span`
 - `center_y = movement(center_x)`
 
-This creates the vertical displacement of the sofa center while it moves forward.
+The `movement(center_x)` is constructed as `(x - span)(x + span)(the evolved polynomial)`, so it hits the start and end point of the path exactly. Also, the evolved polynomial is even, so the whole polynomial is even, which means the journey is symmetric; together with symmetric rotation functions, this creates a symmetric resulting sofa.
 
 ### Rotation polynomial
 
 The sofa's rotation angle is also modeled as a polynomial:
 
-- `angle = rotation(center_x)`
+- `angle = rotation(center_x) = (45/span * x) + (x - span)(x + span)(evolved odd polynomial)`
 
-The code fixes the endpoints of the motion so the sofa begins and ends with the correct corridor alignment, while letting the interior coefficients vary and adapt.
+This design guarantees a -45° angle at the start and 45° at the end (matching the corridor). Also, because the evolved part is odd, the whole function is odd, so the sofa moves symmetrically at each end of the corridor.
+
+### Evolution
 
 This is a standard hill-climbing pattern:
 
@@ -108,7 +101,7 @@ Important pieces:
 - `SEED`: deterministic random seed
 - `span`: corridor travel range
 - wall definitions using `Polynomial` objects
-- `sofa_len` and `sofa_width`
+- `sofa_len` and `sofa_width`: the dimensions of the initial rectangle that gets sculpted
 - grid resolution (`res_x`, `res_y`)
 - optimization parameters such as:
   - `rotation_degree`
@@ -132,18 +125,6 @@ It implements:
 - polynomial subtraction
 - polynomial multiplication
 - evaluation at a point `x`
-- degree tracking
-
-Example behavior:
-
-```python
-p = Polynomial([1, 2, 3])
-print(p.evaluate(2))
-```
-
-The optimizer stores the motion and rotation as coefficient lists that are manipulated and evaluated repeatedly.
-
-This class is the mathematical core of the whole project.
 
 ---
 
@@ -155,23 +136,17 @@ This file creates new candidate polynomials by perturbing coefficients.
 
 - copies the current coefficients,
 - pads them up to a target degree,
-- selects mutable coefficients based on allowed epsilon values,
+- selects mutable coefficients based on allowed epsilon values (for enforcing even/odd functions),
 - adds a random perturbation to one or more coefficients,
 - returns the new polynomial and the indices that changed.
 
-The code uses different epsilon schedules for the rotation and movement polynomials, so different coefficients are mutated with different step sizes.
-
-This is the local search move used by the hill climber.
+The epsilons define by how much the given coefficient changes; it is a uniformly sampled change from `(-epsilon, +epsilon)`. The epsilons are set as a percentage of the coefficient (or zero if we want an even polynomial), and this percentage decreases as the solutions are refined so the adjustments become finer.
 
 ---
 
 ### 5. `fitness.py`
 
-This is the scoring function and the most important computational piece of the project.
-
-#### High-level idea
-
-The optimizer approximates the corridor as a grid of tiny squares. For each sampled position along the sofa's path:
+The optimizer approximates the sofa as a grid of tiny squares. For each sampled position along the sofa's path:
 
 - compute the center position using the movement polynomial,
 - compute the sofa orientation using the rotation polynomial,
@@ -191,11 +166,9 @@ The function creates a 2D state map:
 state[x][y] = (is_alive, was_queued)
 ```
 
-Then it does a boundary propagation / flood-like validation to identify which parts of the sofa remain inside the corridor at each step.
+Then, at each step, only the boundary layer is checked so the inside squares are not checked every time. When a square is killed, its neighbors get queued into the boundary layer.
 
-The returned score is the number of alive cells in the grid. In the optimizer loop this value is used as the objective function.
-
-This is where the project turns the mathematical representation into a concrete quality score.
+The returned score is the number of alive cells in the grid.
 
 ---
 
@@ -217,8 +190,6 @@ The final functions are:
 - `movement = base * mov_mult`
 - `rotation = rotation_base + base * rot_mult`
 
-The endpoint constraints are enforced by construction so the sofa remains anchored at the start and end of the corridor.
-
 #### Optimization loop
 
 The loop repeatedly does:
@@ -233,7 +204,7 @@ Key logic:
 
 - `repeat_last_change` reuses a previous direction when the candidate has been improving
 - `stagnation` tracks lack of improvement
-- `res_x`, `res_y`, `steps`, and `epsilon_size` all increase when the search stalls
+- `res_x`, `res_y`, `steps` all increase and `epsilon_size` decreases when the search stalls
 
 This creates a coarse-to-fine hill-climbing strategy, where the optimizer first explores a lower-resolution version of the problem and then refines it as needed.
 
@@ -290,40 +261,3 @@ These folders contain:
 This acts as a visual record of the optimizer's progress and its final discovered candidate.
 
 ---
-
-## How the optimization works in one sentence
-
-The project defines the sofa’s movement and rotation as low-degree polynomials, mutates their coefficients with a stochastic hill-climber, evaluates how much of the sofa remains inside the corridor, and keeps the best improvements while refining the grid and search step size.
-
----
-
-## Practical interpretation
-
-This project is not a brute-force solver for the moving sofa problem. It is a search heuristic based on geometry and optimization.
-
-Its strength is that it compresses a complex continuous motion into a relatively small set of parameters:
-
-- a few polynomial coefficients for the path,
-- a few polynomial coefficients for the rotation,
-- a fitness score based on corridor occupancy.
-
-That makes the problem search-friendly, even though the actual sofa problem is continuous and highly geometric.
-
----
-
-## Summary
-
-The project is a compact optimization prototype that:
-
-- models a moving sofa as a parameterized trajectory,
-- uses polynomial coefficients as the search variables,
-- evaluates each candidate using a corridor-collision simulation,
-- improves the solution with iterative mutation and acceptance,
-- produces both numerical logs and visualizations of the evolving result.
-
-If you want to inspect the behavior further, the best place to start is:
-
-1. `config.py` for global geometry and problem constants
-2. `fitness.py` for the evaluation model
-3. `optimizer.py` for the actual optimization loop
-4. `visualization.py` for the output renderings
